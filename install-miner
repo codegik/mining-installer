@@ -1,0 +1,40 @@
+#!/bin/bash
+
+# Miner installer: this will install miner service only, it will not install dependencies and drivers
+# Corporation: Versates INC
+# Author: Inacio Klassmann
+
+set -e
+
+if [ "$#" -lt 1 ]; then
+  echo "Usage: $0 <nvidia|radeon> [coin]" >&2
+  exit 1
+fi
+
+PLATFORM=$1
+RIG_ID=$(hostname)
+COIN=eth
+USER=versates
+URL_FILES=https://bitbucket.org/versahub/mining-files/raw/master
+
+if [ "$2" != "" ]; then
+  COIN=$2
+fi
+
+if [ ! -f "wallets/$COIN-wallet" ]; then
+  echo "There is no WALLET for $COIN coin!"
+  exit 2
+fi
+
+if [ ! -f "miners/install-$COIN-miner" ]; then
+  echo "There is no INSTALLER for $COIN coin!"
+  exit 3
+fi
+
+echo "Installing $COIN miner..."
+./miners/install-$COIN-miner $URL_FILES $RIG_ID $PLATFORM
+
+echo "PLEASE REBOOT YOUR SYSTEM!"
+
+exit 1
+

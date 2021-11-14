@@ -1,0 +1,82 @@
+#!/bin/bash
+
+# Corporation: Versates INC
+# Author: Inacio Klassmann
+
+set -e
+
+if [ "$#" -lt 2 ]; then
+  echo "Usage: $0 <URL_FILES> <RIG_ID>" >&2
+  exit 1
+fi
+
+COIN=eth
+URL_FILES=$1
+RIG_ID=$2
+
+USER=versates
+APP_NAME="vminer"
+WALLET=$(cat wallets/$COIN-wallet)
+CLAYMORE_FILE="Claymore.s.Dual.Ethereum.Decred_Siacoin_Lbry_Pascal.AMD.NVIDIA.GPU.Miner.v9.5.-.LINUX.tar.gz"
+CLAYMORE_PATH="/usr/local/$APP_NAME"
+APP_FILE="$CLAYMORE_PATH/$APP_NAME"
+EPOOLS_FILE="$CLAYMORE_PATH/epools.txt"
+EMAIL="miner@versates.com"
+WALLET_FULL_ID="$WALLET.$USER-$RIG_ID/$EMAIL"
+LOG_FILE="/home/$USER/$APP_NAME.log"
+INFO_FILE="$CLAYMORE_PATH/info"
+
+
+# install claymore miner
+echo "##############   INSTALLING CLAYMORE MINER   ##############"
+if [ ! -f $CLAYMORE_FILE ]; then
+    wget $URL_FILES/$CLAYMORE_FILE
+fi
+rm -rf $CLAYMORE_PATH
+mkdir $CLAYMORE_PATH
+tar -xvf $CLAYMORE_FILE -C $CLAYMORE_PATH
+chmod u+s $CLAYMORE_PATH/ethdcrminer64
+
+
+# create epools file
+echo "##############   CREATING POOL FILE LIST   ##############"
+rm -rf $EPOOLS_FILE
+echo "POOL: eth-us-east1.nanopool.org:9999, WALLET: $WALLET_FULL_ID, PSW: x, WORKER: , ESM: 0, ALLPOOLS: 0" >> $EPOOLS_FILE
+echo "POOL: eth-eu1.nanopool.org:9999, WALLET: $WALLET_FULL_ID, PSW: x, WORKER: , ESM: 0, ALLPOOLS: 0" >> $EPOOLS_FILE
+echo "POOL: eth-eu2.nanopool.org:9999, WALLET: $WALLET_FULL_ID, PSW: x, WORKER: , ESM: 0, ALLPOOLS: 0" >> $EPOOLS_FILE
+echo "POOL: eth-asia1.nanopool.org:9999, WALLET: $WALLET_FULL_ID, PSW: x, WORKER: , ESM: 0, ALLPOOLS: 0" >> $EPOOLS_FILE
+
+
+echo "##############   REGISTERING INFO   ##############"
+rm -rf $INFO_FILE
+echo "version: $URL_FILES/$CLAYMORE_FILE" >> $INFO_FILE
+echo "wallet: $WALLET_FULL_ID" >> $INFO_FILE
+echo "coin: $COIN" >> $INFO_FILE
+
+
+# create claymore miner service
+echo "##############   CREATING VMINER SERVICE   ##############"
+rm -rf $APP_FILE
+echo "#!/bin/sh" >> $APP_FILE
+echo "export GPU_FORCE_64BIT_PTR=0" >> $APP_FILE
+echo "export GPU_MAX_HEAP_SIZE=100" >> $APP_FILE
+echo "export GPU_USE_SYNC_OBJECTS=1" >> $APP_FILE
+echo "export GPU_MAX_ALLOC_PERCENT=100" >> $APP_FILE
+echo "export GPU_SINGLE_ALLOC_PERCENT=100" >> $APP_FILE
+echo "nohup $CLAYMORE_PATH/ethdcrminer64 -epool eth-us-west1.nanopool.org:9999 -ewal $WALLET_FULL_ID -epsw x -mode 1 -ftime 10 > $LOG_FILE" >> $APP_FILE
+
+# remove other miner services
+echo "Removing other miner services..."
+update-rc.d -f $APP_NAME remove
+update-rc.d -f ethminer remove
+rm -rf /usr/local/claymore*
+
+# create new service
+echo "Creating $COIN miner services..."
+chmod +x $APP_FILE
+chown $USER:$USER $APP_FILE
+chown $USER:$USER $EPOOLS_FILE
+cp miners/$APP_NAME /etc/init.d/
+chown $USER:$USER /etc/init.d/$APP_NAME
+update-rc.d $APP_NAME defaults
+echo "DONE!"

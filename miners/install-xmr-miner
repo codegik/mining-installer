@@ -1,0 +1,125 @@
+#!/bin/bash
+
+# Corporation: Versates INC
+# Author: Inacio Klassmann
+
+set -e
+
+if [ "$#" -lt 3 ]; then
+  echo "Usage: $0 <URL_FILES> <RIG_ID> <PLATFORM>" >&2
+  exit 1
+fi
+
+COIN=xmr
+URL_FILES=$1
+RIG_ID=$2
+PLATFORM=$3
+
+USER=versates
+APP_NAME="vminer"
+WALLET=$(cat wallets/$COIN-wallet)
+VMINER_FILE="Claymore.CryptoNote.GPU.Miner.v9.1.Beta.-.Linux.-.Catalyst.14.6.tar.gz"
+VMINER_PATH="/usr/local/$APP_NAME"
+APP_FILE="$VMINER_PATH/$APP_NAME"
+EPOOLS_FILE="$VMINER_PATH/pools.txt"
+CONFIG_FILE="$VMINER_PATH/config.txt"
+EMAIL="miner@versates.com"
+WALLET_FULL_ID="$WALLET.$USER-$RIG_ID/$EMAIL"
+LOG_FILE="/home/$USER/$APP_NAME.log"
+INFO_FILE="$VMINER_PATH/info"
+
+if [ "$PLATFORM" == "nvidia" ]; then
+  VMINER_FILE="xmr-stak-nvidia.tar.gz"
+  CONFIG_FILE="$VMINER_PATH/bin/config.txt"
+fi
+
+# install miner
+echo "##############   INSTALLING VMINER   ##############"
+if [ ! -f $VMINER_FILE ]; then
+    wget $URL_FILES/$VMINER_FILE
+fi
+rm -rf $VMINER_PATH
+mkdir $VMINER_PATH
+tar -xvf $VMINER_FILE -C $VMINER_PATH
+
+
+if [ "$PLATFORM" == "nvidia" ]; then
+  # create config file
+  echo "##############   CREATING VMINER CONFIG   ##############"
+  rm -rf $CONFIG_FILE
+  echo '"gpu_threads_conf" : [' >> $CONFIG_FILE
+  echo ' { "index" : 0, "threads" : 64, "blocks" : 30, "bfactor" : 0, "bsleep" :  0, "affine_to_cpu" : false},' >> $CONFIG_FILE
+  echo ' { "index" : 1, "threads" : 64, "blocks" : 30, "bfactor" : 0, "bsleep" :  0, "affine_to_cpu" : false},' >> $CONFIG_FILE
+  echo ' { "index" : 2, "threads" : 64, "blocks" : 30, "bfactor" : 0, "bsleep" :  0, "affine_to_cpu" : false},' >> $CONFIG_FILE
+  echo ' { "index" : 3, "threads" : 64, "blocks" : 30, "bfactor" : 0, "bsleep" :  0, "affine_to_cpu" : false},' >> $CONFIG_FILE
+  echo ' { "index" : 4, "threads" : 64, "blocks" : 30, "bfactor" : 0, "bsleep" :  0, "affine_to_cpu" : false},' >> $CONFIG_FILE
+  echo ' { "index" : 5, "threads" : 64, "blocks" : 30, "bfactor" : 0, "bsleep" :  0, "affine_to_cpu" : false},' >> $CONFIG_FILE
+  echo '],' >> $CONFIG_FILE
+  echo '"use_tls" : false,' >> $CONFIG_FILE
+  echo '"tls_secure_algo" : true,' >> $CONFIG_FILE
+  echo '"tls_fingerprint" : "",' >> $CONFIG_FILE
+  echo '"pool_address" : "xmr-us-east1.nanopool.org:14444",' >> $CONFIG_FILE
+  echo '"wallet_address" : "'$WALLET_FULL_ID'",' >> $CONFIG_FILE
+  echo '"pool_password" : "x",' >> $CONFIG_FILE
+  echo '"call_timeout" : 10,' >> $CONFIG_FILE
+  echo '"retry_time" : 10,' >> $CONFIG_FILE
+  echo '"giveup_limit" : 0,' >> $CONFIG_FILE
+  echo '"verbose_level" : 4,' >> $CONFIG_FILE
+  echo '"h_print_time" : 60,' >> $CONFIG_FILE
+  echo '"output_file" : "'$LOG_FILE'",' >> $CONFIG_FILE
+  echo '"httpd_port" : 8080,' >> $CONFIG_FILE
+  echo '"prefer_ipv4" : true,' >> $CONFIG_FILE
+  chmod +x $CONFIG_FILE
+
+  # create starter miner
+  echo "##############   CREATING VMINER SERVICE   ##############"
+  chmod u+s $VMINER_PATH/bin/xmr-stak-nvidia
+  rm -rf $APP_FILE
+  echo "#!/bin/bash" >> $APP_FILE
+  echo "nohup $VMINER_PATH/bin/xmr-stak-nvidia $CONFIG_FILE > $LOG_FILE" >> $APP_FILE
+else
+  # create epools file
+  echo "##############   CREATING POOL FILE LIST   ##############"
+  rm -rf $EPOOLS_FILE
+  echo "POOL: xmr-eu1.nanopool.org:14433, WALLET: $WALLET_FULL_ID, PSW: x, WORKER: , ESM: 0, ALLPOOLS: 0" >> $EPOOLS_FILE
+  echo "POOL: xmr-eu2.nanopool.org:14433, WALLET: $WALLET_FULL_ID, PSW: x, WORKER: , ESM: 0, ALLPOOLS: 0" >> $EPOOLS_FILE
+  echo "POOL: xmr-us-east1.nanopool.org:14433, WALLET: $WALLET_FULL_ID, PSW: x, WORKER: , ESM: 0, ALLPOOLS: 0" >> $EPOOLS_FILE
+  echo "POOL: xmr-us-west1.nanopool.org:14433, WALLET: $WALLET_FULL_ID, PSW: x, WORKER: , ESM: 0, ALLPOOLS: 0" >> $EPOOLS_FILE
+  echo "POOL: xmr-asia1.nanopool.org:14433, WALLET: $WALLET_FULL_ID, PSW: x, WORKER: , ESM: 0, ALLPOOLS: 0" >> $EPOOLS_FILE
+  chown $USER:$USER $EPOOLS_FILE
+
+  # create config file
+  echo "##############   CREATING VMINER CONFIG   ##############"
+  rm -rf $CONFIG_FILE
+  echo "-o ssl://xmr-us-west1.nanopool.org:14433" >> $CONFIG_FILE
+  echo "-u $WALLET_FULL_ID" >> $CONFIG_FILE
+  echo "-p x" >> $CONFIG_FILE
+  echo "-ftime 1" >> $CONFIG_FILE
+
+  echo "##############   CREATING VMINER SERVICE   ##############"
+  chmod u+s $VMINER_PATH/miner
+  rm -rf $APP_FILE
+  echo "#!/bin/bash" >> $APP_FILE
+  echo "nohup $VMINER_PATH/miner > $LOG_FILE" >> $APP_FILE
+fi
+
+echo "##############   REGISTERING INFO   ##############"
+rm -rf $INFO_FILE
+echo "version: $URL_FILES/$VMINER_FILE" >> $INFO_FILE
+echo "wallet: $WALLET_FULL_ID" >> $INFO_FILE
+echo "coin: $COIN" >> $INFO_FILE
+
+# remove other miner services
+echo "Removing other miner services..."
+update-rc.d -f $APP_NAME remove
+update-rc.d -f ethminer remove
+rm -rf /usr/local/claymore*
+
+# create new service
+echo "Creating $COIN miner services..."
+chmod +x $APP_FILE
+chown $USER:$USER $APP_FILE
+cp miners/$APP_NAME /etc/init.d/
+chown $USER:$USER /etc/init.d/$APP_NAME
+update-rc.d $APP_NAME defaults
+echo "DONE!"

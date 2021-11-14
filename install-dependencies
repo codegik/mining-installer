@@ -1,0 +1,28 @@
+#!/bin/bash
+
+# Corporation: Versates INC
+# Author: Inacio Klassmann
+
+set -e
+
+if [ "$#" -lt 1 ]; then
+  echo "Usage: $0 <URL_FILES>" >&2
+  exit 1
+fi
+
+URL_FILES=$1
+TEAM_VIEWER_FILE=teamviewer_12.0.76279_i386.deb
+
+# install dependencies
+echo "##############   INSTALLING DEPENDENCIES   ##############"
+apt-get update
+apt-get -y install vim openssh-server gdebi-core git
+
+
+# install teamviewere
+echo "##############   INSTALLING TEAMVIEWER   ##############"
+if [ ! -f $TEAM_VIEWER_FILE ]; then
+    wget $URL_FILES/$TEAM_VIEWER_FILE
+fi
+gdebi --non-interactive $TEAM_VIEWER_FILE
+systemctl enable teamviewerd

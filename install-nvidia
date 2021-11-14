@@ -1,0 +1,43 @@
+#!/bin/bash
+
+# Miner installer: this will install dependencies, drivers and miner service
+# Corporation: Versates INC
+# Author: Inacio Klassmann
+
+set -e
+
+RIG_ID=$(hostname)
+COIN=eth
+USER=versates
+URL_FILES=https://bitbucket.org/versahub/mining-files/raw/master
+
+if [ "$1" != "" ]; then
+  COIN=$1
+fi
+
+if [ ! -f "wallets/$COIN-wallet" ]; then
+  echo "There is no WALLET for $COIN coin!"
+  exit 2
+fi
+
+if [ ! -f "miners/install-$COIN-miner" ]; then
+  echo "There is no INSTALLER for $COIN coin!"
+  exit 3
+fi
+
+./install-dependencies $URL_FILES
+
+# install GPU driver
+echo "##############   INSTALLING NVIDIA GPU DRIVER   ##############"
+add-apt-repository ppa:graphics-drivers/ppa
+apt-get update
+apt-get -y install nvidia-384
+nvidia-xconfig
+
+echo "Installing $COIN miner..."
+./miners/install-$COIN-miner $URL_FILES $RIG_ID nvidia
+
+echo "PLEASE REBOOT YOUR SYSTEM!"
+
+exit 1
+

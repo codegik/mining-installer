@@ -1,0 +1,125 @@
+#!/bin/bash
+
+# Corporation: Versates INC
+# Author: Inacio Klassmann
+
+set -e
+
+if [ "$#" -lt 3 ]; then
+  echo "Usage: $0 <URL_FILES> <RIG_ID> <PLATFORM>" >&2
+  exit 1
+fi
+
+COIN=zec
+URL_FILES=$1
+RIG_ID=$2
+PLATFORM=$3
+
+USER=versates
+APP_NAME="vminer"
+WALLET=$(cat wallets/$COIN-wallet)
+VMINER_FILE="Claymore.s.ZCash.AMD.GPU.Miner.v12.5.-.LINUX.tar.gz"
+VMINER_PATH="/usr/local/$APP_NAME"
+APP_FILE="$VMINER_PATH/$APP_NAME"
+EPOOLS_FILE="$VMINER_PATH/epools.txt"
+CONFIG_FILE="$VMINER_PATH/config.txt"
+EMAIL="miner@versates.com"
+WALLET_FULL_ID="$WALLET.$USER-$RIG_ID/$EMAIL"
+LOG_FILE="/home/$USER/$APP_NAME.log"
+INFO_FILE="$VMINER_PATH/info"
+
+if [ "$PLATFORM" == "nvidia" ]; then
+  VMINER_FILE="Zec.miner.0.3.4b.Linux.Bin.tar.gz"
+  CONFIG_FILE="$VMINER_PATH/miner.cfg"
+fi
+
+# install miner
+echo "##############   INSTALLING VMINER   ##############"
+if [ ! -f $VMINER_FILE ]; then
+    wget $URL_FILES/$VMINER_FILE
+fi
+rm -rf $VMINER_PATH
+mkdir $VMINER_PATH
+tar -xvf $VMINER_FILE -C $VMINER_PATH
+
+
+if [ "$PLATFORM" == "nvidia" ]; then
+  chmod u+s $VMINER_PATH/miner
+  # create config file
+  echo "##############   CREATING VMINER CONFIG   ##############"
+  rm -rf $CONFIG_FILE
+  echo "[common]" >> $CONFIG_FILE
+  echo "cuda_devices 0 1 2 3 4 5" >> $CONFIG_FILE
+  echo "intensity    64 64 64 64 64 64" >> $CONFIG_FILE
+  echo "templimit    80" >> $CONFIG_FILE
+  echo "pec          0" >> $CONFIG_FILE
+  echo "boff         0" >> $CONFIG_FILE
+  echo "eexit        0" >> $CONFIG_FILE
+  echo "tempunits    c" >> $CONFIG_FILE
+  echo "log          0" >> $CONFIG_FILE
+  echo "logfile      miner.log" >> $CONFIG_FILE
+  echo "api          127.0.0.1:42000" >> $CONFIG_FILE
+
+  servers=( "zec-eu1.nanopool.org" "zec-eu2.nanopool.org" "zec-us-east1.nanopool.org" "zec-us-west1.nanopool.org" "zec-asia1.nanopool.org" )
+  for i in "${servers[@]}"; do
+    echo "[server]" >> $CONFIG_FILE
+    echo "server $i" >> $CONFIG_FILE
+    echo "port   6666" >> $CONFIG_FILE
+    echo "user   $WALLET_FULL_ID" >> $CONFIG_FILE
+    echo "pass   z" >> $CONFIG_FILE
+  done
+
+  # create starter miner
+  echo "##############   CREATING VMINER SERVICE   ##############"
+  rm -rf $APP_FILE
+  echo "#!/bin/bash" >> $APP_FILE
+  echo "nohup $VMINER_PATH/miner > $LOG_FILE" >> $APP_FILE
+else
+  chmod u+s $VMINER_PATH/zecminer64
+  # create epools file
+  echo "##############   CREATING POOL FILE LIST   ##############"
+  rm -rf $EPOOLS_FILE
+  echo "POOL: zec-eu1.nanopool.org:6633, WALLET: $WALLET_FULL_ID, PSW: z, ALLPOOLS: 0" >> $EPOOLS_FILE
+  echo "POOL: zec-eu2.nanopool.org:6633, WALLET: $WALLET_FULL_ID, PSW: z, ALLPOOLS: 0" >> $EPOOLS_FILE
+  echo "POOL: zec-us-east1.nanopool.org:6633, WALLET: $WALLET_FULL_ID, PSW: z, ALLPOOLS: 0" >> $EPOOLS_FILE
+  echo "POOL: zec-us-west1.nanopool.org:6633, WALLET: $WALLET_FULL_ID, PSW: z, ALLPOOLS: 0" >> $EPOOLS_FILE
+  echo "POOL: zec-asia1.nanopool.org:6633, WALLET: $WALLET_FULL_ID, PSW: z, ALLPOOLS: 0" >> $EPOOLS_FILE
+  chown $USER:$USER $EPOOLS_FILE
+
+  # create config file
+  echo "##############   CREATING VMINER CONFIG   ##############"
+  rm -rf $CONFIG_FILE
+  echo "-zpool ssl://zec-eu1.nanopool.org:6633" >> $CONFIG_FILE
+  echo "-zwal $WALLET_FULL_ID" >> $CONFIG_FILE
+  echo "-zpsw z" >> $CONFIG_FILE
+  echo "-ftime 1" >> $CONFIG_FILE
+  echo "-i 6" >> $CONFIG_FILE
+  echo "-tt 75" >> $CONFIG_FILE
+
+  # create starter miner
+  echo "##############   CREATING VMINER SERVICE   ##############"
+  rm -rf $APP_FILE
+  echo "#!/bin/bash" >> $APP_FILE
+  echo "nohup $VMINER_PATH/zecminer64 > $LOG_FILE" >> $APP_FILE
+fi
+
+echo "##############   REGISTERING INFO   ##############"
+rm -rf $INFO_FILE
+echo "version: $URL_FILES/$VMINER_FILE" >> $INFO_FILE
+echo "wallet: $WALLET_FULL_ID" >> $INFO_FILE
+echo "coin: $COIN" >> $INFO_FILE
+
+# remove other miner services
+echo "Removing other miner services..."
+update-rc.d -f $APP_NAME remove
+update-rc.d -f ethminer remove
+rm -rf /usr/local/claymore*
+
+# create new service
+echo "Creating $COIN miner services..."
+chmod +x $APP_FILE
+chown $USER:$USER $APP_FILE
+cp miners/$APP_NAME /etc/init.d/
+chown $USER:$USER /etc/init.d/$APP_NAME
+update-rc.d $APP_NAME defaults
+echo "DONE!"
